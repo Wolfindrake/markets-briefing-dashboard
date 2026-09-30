@@ -572,7 +572,11 @@
       var rowsAcross = series.map(function (s) {
         var rows = s.snap[m.group];
         var row = findRow(rows, m.name);
-        return row ? row[1] : "—";
+        if (!row) return "—";
+        var cols = s.snap.columns || [];
+        var lastIdx = cols.indexOf("last");
+        var valIdx = lastIdx >= 0 ? lastIdx + 1 : 1;
+        return row[valIdx] != null ? row[valIdx] : "—";
       });
       var cells = rowsAcross.map(function (v) { return "<td>" + esc(v) + "</td>"; }).join("");
       return "<tr><td>" + esc(m.name) + "</td>" + cells + "<td>" + sparklineSvg(rowsAcross) + "</td></tr>";
