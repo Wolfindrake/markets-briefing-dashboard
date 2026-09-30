@@ -530,7 +530,8 @@
   }
   function findRow(rows, name) {
     if (!rows) return null;
-    for (var i = 0; i < rows.length; i++) { if (rows[i][0] === name || rows[i][0].indexOf(name) === 0) return rows[i]; }
+    for (var i = 0; i < rows.length; i++) { if (rows[i][0] === name) return rows[i]; }
+    for (var i = 0; i < rows.length; i++) { if (rows[i][0].indexOf(name) === 0) return rows[i]; }
     return null;
   }
   function sevenDaySeries() {
