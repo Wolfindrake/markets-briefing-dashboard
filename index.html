@@ -157,6 +157,21 @@
   .report-doc .rf-card { border: 1px solid #D8DCE8; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; font-family: var(--font-sans); font-size: 12.5px; }
   .report-actions { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 14px; position: sticky; top: 0; }
   .report-close { background: none; border: 1px solid var(--border); color: white; border-radius: 8px; padding: 8px 14px; cursor: pointer; font-family: var(--font-sans); }
+  .freshness-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  .fresh-green { background:#2E8B4E; box-shadow:0 0 0 3px rgba(46,139,78,0.15); }
+  .fresh-yellow { background:#B8860B; box-shadow:0 0 0 3px rgba(184,134,11,0.15); }
+  .fresh-red { background:#C0392B; box-shadow:0 0 0 3px rgba(192,57,43,0.15); }
+  .freshness-label { font-weight:600; }
+  .verif-summary { background: var(--card-bg); border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:14px; font-family: var(--font-sans); }
+  .verif-note-text { font-size:12.5px; color: var(--gray); margin:8px 0 0; line-height:1.5; }
+  .verif-items { font-size:12px; color: var(--gray); margin:6px 0 0; }
+  .verif-items.unverif { color: var(--amber); }
+  .plain-meaning { background: var(--ice); border-left:4px solid var(--navy); border-radius:0 10px 10px 0; padding:10px 14px; margin:10px 0; font-size:13px; line-height:1.55; color: var(--navy-dark); font-family: var(--font-sans); }
+  .sevenday-table { width:100%; border-collapse:collapse; font-family: var(--font-sans); font-size:13px; }
+  .sevenday-table th, .sevenday-table td { padding:8px 10px; border-top:1px solid var(--border); text-align:right; }
+  .sevenday-table th:first-child, .sevenday-table td:first-child { text-align:left; }
+  .sevenday-table thead th { background: var(--navy); color:#fff; }
+  .sevenday-spark { vertical-align:middle; }
   @media print {
     body * { visibility: hidden; }
     #reportOverlay, #reportOverlay * { visibility: visible; }
@@ -198,6 +213,7 @@
       <button data-tab="commentary">Market Commentary</button>
       <button data-tab="news">News</button>
       <button data-tab="weekahead">Week Ahead</button>
+      <button data-tab="sevenday">Last 7 Days</button>
       <button data-tab="lof" class="lof-tab-btn">&#10024; Lords of Finance</button>
     </nav>
     <section class="panel active" id="panel-equities">
@@ -226,6 +242,10 @@
     <section class="panel" id="panel-weekahead">
       <p class="section-note body-sans" style="margin-top:0;" id="weekaheadScope"></p>
       <ul class="week-list" id="weekList"></ul>
+    </section>
+    <section class="panel" id="panel-sevenday">
+      <p class="section-note body-sans" style="margin-top:0;">Trend over the last 7 recorded sessions for major indices, yields, FX and commodities.</p>
+      <div id="sevenDayWrap"></div>
     </section>
     <section class="panel" id="panel-lof">
       <div class="lof-head">
@@ -338,10 +358,15 @@
 
   function forceCardHtml(f, withAnalogy) {
     var stats = (f.stats || []).map(function (s) { return '<div class="force-stat"><div class="fv">' + esc(s.value) + '</div><div class="fl">' + esc(s.label) + "</div></div>"; }).join("");
+    var plainMeaning = "";
+    if (f.analogy) {
+      var lead = (f.stats && f.stats[0]) ? (esc(f.stats[0].value) + " — " + esc(f.stats[0].label)) : "";
+      plainMeaning = '<div class="plain-meaning"><strong>What this actually means:</strong> ' + (lead ? lead + ". " : "") + esc(f.analogy) + "</div>";
+    }
     return (
       '<div class="force-card"><h3>' + esc(f.title) + "</h3>" +
-      (withAnalogy ? '<p class="force-analogy">' + esc(f.analogy) + "</p>" : "") +
       '<div class="force-stats">' + stats + "</div>" +
+      plainMeaning +
       '<p class="force-text"><strong>What happened &amp; why:</strong> ' + esc(f.explanation) + "</p>" +
       '<p class="force-text"><strong>Impact:</strong> ' + esc(f.whyItMatters) + "</p>" +
       '<p class="force-source">' + (f.sourceUrl ? ('Source: <a href="' + esc(f.sourceUrl) + '" target="_blank" rel="noopener">' + esc(f.source) + " ↗</a>") : ("Source: " + esc(f.source))) + "</p></div>"
@@ -368,9 +393,18 @@
   }
 
   function renderSources() {
-    document.getElementById("sourcesBlock").innerHTML = "<h3>Sources</h3><ul>" + DATA.sources.map(function (s) {
+    var f = freshnessInfo();
+    var v = DATA.verification || {};
+    var verifBlock =
+      '<div class="verif-summary"><span class="freshness-dot ' + f.cls + '"></span><strong>' + esc(f.label) + '</strong> &middot; last verified ' + esc(fmtDate(DATA.updatedAt)) +
+      (v.note ? ('<p class="verif-note-text">' + esc(v.note) + "</p>") : "") +
+      ((v.verifiedItems && v.verifiedItems.length) ? ('<p class="verif-items"><strong>Verified against Investing.com:</strong> ' + v.verifiedItems.map(esc).join(", ") + "</p>") : "") +
+      ((v.unverifiedItems && v.unverifiedItems.length) ? ('<p class="verif-items unverif"><strong>Not yet verified:</strong> ' + v.unverifiedItems.map(esc).join(", ") + "</p>") : "") +
+      "</div>";
+    var sourceLinks = "<ul>" + DATA.sources.map(function (s) {
       return s.url ? '<li><a href="' + s.url + '" target="_blank" rel="noopener">' + s.name + "</a></li>" : "<li>" + s.name + "</li>";
     }).join("") + "</ul>";
+    document.getElementById("sourcesBlock").innerHTML = "<h3>Sources &amp; Verification</h3>" + verifBlock + sourceLinks;
   }
 
   function renderSnapshotTables() {
@@ -389,7 +423,21 @@
     document.getElementById("driver-others").textContent = dn.others || "";
   }
 
-  function renderUpdatedBadge() { document.getElementById("updatedBadge").textContent = "Data last refreshed: " + fmtDate(DATA.updatedAt); }
+  function freshnessInfo() {
+    var updated = new Date(DATA.updatedAt);
+    var now = new Date();
+    var diffH = (now - updated) / 36e5;
+    var sameDay = updated.toDateString() === now.toDateString();
+    if (isNaN(diffH)) return { cls: "fresh-yellow", label: "Unknown" };
+    if (diffH < 1) return { cls: "fresh-green", label: "Fresh (< 1 hour)" };
+    if (sameDay || diffH < 24) return { cls: "fresh-yellow", label: "Updated today" };
+    return { cls: "fresh-red", label: "Stale (" + Math.floor(diffH / 24) + "d old)" };
+  }
+  function renderUpdatedBadge() {
+    var f = freshnessInfo();
+    document.getElementById("updatedBadge").innerHTML =
+      '<span class="freshness-dot ' + f.cls + '"></span>Data last refreshed: ' + esc(fmtDate(DATA.updatedAt)) + ' &middot; <span class="freshness-label">' + esc(f.label) + "</span>";
+  }
 
   function renderVerifyNote() {
     var v = DATA.verification;
@@ -464,10 +512,77 @@
     }
   }
 
+  var SEVEN_DAY_METRICS = [
+    { name: "S&P 500", group: "equities" },
+    { name: "United States 10-Year", group: "fixedIncome" },
+    { name: "United States 30-Year", group: "fixedIncome" },
+    { name: "EUR/USD", group: "others" },
+    { name: "Brent Crude Oil", group: "others" },
+    { name: "Gold (XAU/USD)", group: "others" },
+    { name: "Bitcoin (BTC/USD)", group: "others" }
+  ];
+  var SNAPSHOT_DATE_OVERRIDES = { sep23: "2026-09-23", sep28: "2026-09-28", sep29: "2026-09-29" };
+  function parseNum(v) {
+    if (typeof v !== "string") return NaN;
+    var s = v.replace(/[,$€%]/g, "").replace(/bp$/, "").trim();
+    var n = parseFloat(s);
+    return isNaN(n) ? NaN : n;
+  }
+  function findRow(rows, name) {
+    if (!rows) return null;
+    for (var i = 0; i < rows.length; i++) { if (rows[i][0] === name || rows[i][0].indexOf(name) === 0) return rows[i]; }
+    return null;
+  }
+  function sevenDaySeries() {
+    var byDate = {};
+    Object.keys(DATA.snapshots).forEach(function (key) {
+      var snap = DATA.snapshots[key];
+      var dateISO = snap.dateISO || SNAPSHOT_DATE_OVERRIDES[key];
+      if (!dateISO) return;
+      if (!byDate[dateISO] || key.indexOf("close") !== -1) byDate[dateISO] = { key: key, snap: snap };
+    });
+    var dates = Object.keys(byDate).sort();
+    var last7 = dates.slice(-7);
+    return last7.map(function (d) { return { dateISO: d, key: byDate[d].key, snap: byDate[d].snap }; });
+  }
+  function sparklineSvg(values) {
+    var nums = values.map(parseNum).filter(function (n) { return !isNaN(n); });
+    if (nums.length < 2) return "";
+    var min = Math.min.apply(null, nums), max = Math.max.apply(null, nums);
+    var range = (max - min) || 1;
+    var w = 110, h = 26, pad = 3;
+    var pts = values.map(function (v, i) {
+      var n = parseNum(v);
+      var x = pad + (i / (values.length - 1)) * (w - pad * 2);
+      var y = isNaN(n) ? h / 2 : (h - pad) - ((n - min) / range) * (h - pad * 2);
+      return x.toFixed(1) + "," + y.toFixed(1);
+    }).join(" ");
+    var firstN = nums[0], lastN = nums[nums.length - 1];
+    var up = lastN >= firstN;
+    return '<svg class="sevenday-spark" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h + '"><polyline points="' + pts + '" fill="none" stroke="' + (up ? "#2E8B4E" : "#C0392B") + '" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+  function renderSevenDay() {
+    var wrap = document.getElementById("sevenDayWrap");
+    if (!wrap) return;
+    var series = sevenDaySeries();
+    if (!series.length) { wrap.innerHTML = "<p class='section-note body-sans'>Not enough history yet.</p>"; return; }
+    var head = "<thead><tr><th>Metric</th>" + series.map(function (s) { return "<th>" + esc(s.dateISO.slice(5)) + "</th>"; }).join("") + "<th>Trend</th></tr></thead>";
+    var body = "<tbody>" + SEVEN_DAY_METRICS.map(function (m) {
+      var rowsAcross = series.map(function (s) {
+        var rows = s.snap[m.group];
+        var row = findRow(rows, m.name);
+        return row ? row[1] : "—";
+      });
+      var cells = rowsAcross.map(function (v) { return "<td>" + esc(v) + "</td>"; }).join("");
+      return "<tr><td>" + esc(m.name) + "</td>" + cells + "<td>" + sparklineSvg(rowsAcross) + "</td></tr>";
+    }).join("") + "</tbody>";
+    wrap.innerHTML = "<div class='table-wrap'><table class='sevenday-table'>" + head + body + "</table></div>";
+  }
+
   function renderAll() {
     renderHero(); renderVerifyNote(); renderWhenControls(); renderSnapshotTables();
     renderWeekAhead(); renderCommentary(); renderNews(); renderSimpleMode(); renderLof();
-    renderSources(); renderUpdatedBadge();
+    renderSevenDay(); renderSources(); renderUpdatedBadge();
   }
 
   document.getElementById("modeToggle").addEventListener("click", function (e) {
@@ -568,6 +683,7 @@
       "<h2>A FEW WORDS YOU'LL HEAR (GLOSSARY)</h2><ul style='font-family:-apple-system,sans-serif;font-size:13px;'>" + glossaryLines + "</ul>" +
       "<h2>WEEK AHEAD</h2><ul style='font-family:-apple-system,sans-serif;font-size:13px;'>" + weekLines + "</ul>" +
       "<h2>NEWS — FURTHER READING</h2><ul style='font-family:-apple-system,sans-serif;font-size:12.5px;'>" + newsLines + "</ul>" +
+      "<h2>DATA VERIFICATION</h2><p style='font-family:-apple-system,sans-serif;font-size:12.5px;'>" + esc((DATA.verification && DATA.verification.note) || "") + " Last refreshed: " + esc(fmtDate(DATA.updatedAt)) + ".</p>" +
       "<h2>SOURCES</h2><ul style='font-family:-apple-system,sans-serif;font-size:12px;'>" + DATA.sources.map(function (s) { return s.url ? "<li><a href='" + s.url + "'>" + s.name + "</a></li>" : "<li>" + s.name + "</li>"; }).join("") + "</ul>"
     );
   }
